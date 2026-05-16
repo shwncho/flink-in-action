@@ -35,10 +35,12 @@ public class FlinkKafkaJob {
                 "kafka-source"
         );
 
-        stream
-                .map(value -> "[Flink processed] " + value.toUpperCase())
-                .print();
+        applyProcessing(stream).print();
 
         env.execute("Flink Kafka Demo Job");
+    }
+
+    public static DataStream<String> applyProcessing(DataStream<String> source) {
+        return source.map(value -> "[Flink processed] " + value.toUpperCase());
     }
 }
