@@ -2,8 +2,13 @@ package com.example.demo.flink;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.example.demo.flink.domain.EnrichedOrder;
+import com.example.demo.flink.domain.Order;
+import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -22,42 +27,26 @@ class FlinkKafkaJobTest {
                     .build());
 
     @Test
-    void appliesPrefixAndUppercase() throws Exception {
+    void enrichesEachOrderWithProcessedAt() throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
 
-        DataStream<String> input = env.fromData("hello", "flink", "miniCluster");
-        DataStream<String> result = FlinkKafkaJob.applyProcessing(input);
+        Order o1 = new Order("o1", "u1", "p1", new BigDecimal("10.00"), Instant.parse("2026-01-01T00:00:00Z"));
+        Order o2 = new Order("o2", "u2", "p2", new BigDecimal("20.00"), Instant.parse("2026-01-01T00:01:00Z"));
 
-        List<String> collected = new ArrayList<>();
-        try (CloseableIterator<String> it = result.executeAndCollect()) {
+        Instant before = Instant.now();
+        DataStream<Order> input = env.fromData(TypeInformation.of(Order.class), o1, o2);
+        DataStream<EnrichedOrder> result = FlinkKafkaJob.applyProcessing(input);
+
+        List<EnrichedOrder> collected = new ArrayList<>();
+        try (CloseableIterator<EnrichedOrder> it = result.executeAndCollect()) {
             it.forEachRemaining(collected::add);
         }
+        Instant after = Instant.now();
 
-        assertThat(collected).containsExactly(
-                "[Flink processed] HELLO",
-                "[Flink processed] FLINK",
-                "[Flink processed] MINICLUSTER"
-        );
-    }
-
-    @Test
-    void preservesInputOrderWithParallelismOne() throws Exception {
-        StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        env.setParallelism(1);
-
-        DataStream<String> input = env.fromData("a", "b", "c");
-        DataStream<String> result = FlinkKafkaJob.applyProcessing(input);
-
-        List<String> collected = new ArrayList<>();
-        try (CloseableIterator<String> it = result.executeAndCollect()) {
-            it.forEachRemaining(collected::add);
-        }
-
-        assertThat(collected).containsExactly(
-                "[Flink processed] A",
-                "[Flink processed] B",
-                "[Flink processed] C"
-        );
+        assertThat(collected).hasSize(2);
+        assertThat(collected).extracting(EnrichedOrder::order).containsExactly(o1, o2);
+        assertThat(collected).allSatisfy(e ->
+                assertThat(e.processedAt()).isBetween(before, after));
     }
 }

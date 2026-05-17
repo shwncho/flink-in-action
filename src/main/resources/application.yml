@@ -9,4 +9,5 @@ spring:
 
 app:
   kafka:
-    topic: demo-topic
+    input-topic: orders
+    output-topic: enriched-orders
