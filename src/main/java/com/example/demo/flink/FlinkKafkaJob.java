@@ -3,6 +3,8 @@ package com.example.demo.flink;
 import com.example.demo.flink.common.JsonSerde;
 import com.example.demo.flink.domain.EnrichedOrder;
 import com.example.demo.flink.domain.Order;
+import com.example.demo.flink.domain.UserOrderStats;
+import com.example.demo.flink.function.UserOrderStatsFunction;
 import java.time.Instant;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -21,6 +23,7 @@ public class FlinkKafkaJob {
     private static final String BOOTSTRAP_SERVERS = "localhost:9092";
     private static final String INPUT_TOPIC = "orders";
     private static final String OUTPUT_TOPIC = "enriched-orders";
+    private static final String STATS_TOPIC = "user-order-stats";
     private static final String GROUP_ID = "flink-demo-consumer";
 
     public static void main(String[] args) throws Exception {
@@ -58,6 +61,21 @@ public class FlinkKafkaJob {
         processed.sinkTo(sink).name("enriched-orders-sink");
         processed.print().name("debug-print");
 
+        DataStream<UserOrderStats> stats = applyStatefulProcessing(orders);
+
+        KafkaSink<UserOrderStats> statsSink = KafkaSink.<UserOrderStats>builder()
+                .setBootstrapServers(BOOTSTRAP_SERVERS)
+                .setRecordSerializer(
+                        KafkaRecordSerializationSchema.<UserOrderStats>builder()
+                                .setTopic(STATS_TOPIC)
+                                .setValueSerializationSchema(new JsonSerde<>(UserOrderStats.class))
+                                .build())
+                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+                .build();
+
+        stats.sinkTo(statsSink).name("user-order-stats-sink");
+        stats.print().name("debug-stats-print");
+
         env.execute("Flink Kafka Demo Job");
     }
 
@@ -66,5 +84,13 @@ public class FlinkKafkaJob {
                 .map(order -> new EnrichedOrder(order, Instant.now()))
                 .returns(TypeInformation.of(EnrichedOrder.class))
                 .name("enrich-order");
+    }
+
+    public static DataStream<UserOrderStats> applyStatefulProcessing(DataStream<Order> source) {
+        return source
+                .keyBy(Order::userId)
+                .process(new UserOrderStatsFunction())
+                .returns(TypeInformation.of(UserOrderStats.class))
+                .name("user-order-stats");
     }
 }
