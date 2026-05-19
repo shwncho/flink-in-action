@@ -4,7 +4,11 @@ import com.example.demo.flink.common.JsonSerde;
 import com.example.demo.flink.domain.EnrichedOrder;
 import com.example.demo.flink.domain.Order;
 import com.example.demo.flink.domain.UserOrderStats;
+import com.example.demo.flink.domain.UserWindowStats;
+import com.example.demo.flink.function.OrderAggregator;
 import com.example.demo.flink.function.UserOrderStatsFunction;
+import com.example.demo.flink.function.UserWindowStatsFunction;
+import java.time.Duration;
 import java.time.Instant;
 import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
@@ -17,6 +21,7 @@ import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingEventTimeWindows;
 
 public class FlinkKafkaJob {
 
@@ -24,6 +29,7 @@ public class FlinkKafkaJob {
     private static final String INPUT_TOPIC = "orders";
     private static final String OUTPUT_TOPIC = "enriched-orders";
     private static final String STATS_TOPIC = "user-order-stats";
+    private static final String WINDOW_TOPIC = "user-order-windows";
     private static final String GROUP_ID = "flink-demo-consumer";
 
     public static void main(String[] args) throws Exception {
@@ -76,6 +82,21 @@ public class FlinkKafkaJob {
         stats.sinkTo(statsSink).name("user-order-stats-sink");
         stats.print().name("debug-stats-print");
 
+        DataStream<UserWindowStats> windowStats = applyWindowedProcessing(orders);
+
+        KafkaSink<UserWindowStats> windowSink = KafkaSink.<UserWindowStats>builder()
+                .setBootstrapServers(BOOTSTRAP_SERVERS)
+                .setRecordSerializer(
+                        KafkaRecordSerializationSchema.<UserWindowStats>builder()
+                                .setTopic(WINDOW_TOPIC)
+                                .setValueSerializationSchema(new JsonSerde<>(UserWindowStats.class))
+                                .build())
+                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
+                .build();
+
+        windowStats.sinkTo(windowSink).name("user-order-windows-sink");
+        windowStats.print().name("debug-window-print");
+
         env.execute("Flink Kafka Demo Job");
     }
 
@@ -92,5 +113,17 @@ public class FlinkKafkaJob {
                 .process(new UserOrderStatsFunction())
                 .returns(TypeInformation.of(UserOrderStats.class))
                 .name("user-order-stats");
+    }
+
+    public static DataStream<UserWindowStats> applyWindowedProcessing(DataStream<Order> source) {
+        return source
+                .assignTimestampsAndWatermarks(
+                        WatermarkStrategy.<Order>forBoundedOutOfOrderness(Duration.ofSeconds(5))
+                                .withTimestampAssigner((order, ts) -> order.ts().toEpochMilli()))
+                .keyBy(Order::userId)
+                .window(TumblingEventTimeWindows.of(Duration.ofMinutes(1)))
+                .aggregate(new OrderAggregator(), new UserWindowStatsFunction())
+                .returns(TypeInformation.of(UserWindowStats.class))
+                .name("user-order-windows");
     }
 }

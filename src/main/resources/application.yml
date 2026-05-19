@@ -12,3 +12,4 @@ app:
     input-topic: orders
     output-topic: enriched-orders
     stats-topic: user-order-stats
+    windows-topic: user-order-windows
