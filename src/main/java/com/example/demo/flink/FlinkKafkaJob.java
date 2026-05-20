@@ -1,5 +1,6 @@
 package com.example.demo.flink;
 
+import com.example.demo.flink.common.FlinkEnvironments;
 import com.example.demo.flink.common.JsonSerde;
 import com.example.demo.flink.domain.EnrichedOrder;
 import com.example.demo.flink.domain.Order;
@@ -31,12 +32,14 @@ public class FlinkKafkaJob {
     private static final String STATS_TOPIC = "user-order-stats";
     private static final String WINDOW_TOPIC = "user-order-windows";
     private static final String GROUP_ID = "flink-demo-consumer";
+    private static final String CHECKPOINT_DIR = "file:///tmp/practice-flink-checkpoints";
 
     public static void main(String[] args) throws Exception {
         Configuration config = new Configuration();
         config.set(RestOptions.PORT, 8081);
         StreamExecutionEnvironment env =
                 StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(config);
+        FlinkEnvironments.configureCheckpointing(env, CHECKPOINT_DIR);
 
         KafkaSource<Order> source = KafkaSource.<Order>builder()
                 .setBootstrapServers(BOOTSTRAP_SERVERS)
