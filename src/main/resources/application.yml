@@ -13,5 +13,7 @@ app:
     output-topic: enriched-orders
     stats-topic: user-order-stats
     windows-topic: user-order-windows
+    rules-topic: discount-rules
+    discounted-topic: discounted-orders
   flink:
     checkpoint-dir: file:///tmp/practice-flink-checkpoints
