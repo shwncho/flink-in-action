@@ -2,6 +2,7 @@ package com.example.demo.flink;
 
 import com.example.demo.flink.common.FlinkEnvironments;
 import com.example.demo.flink.common.JsonSerde;
+import com.example.demo.flink.common.KafkaSinks;
 import com.example.demo.flink.domain.DiscountRule;
 import com.example.demo.flink.domain.DiscountedOrder;
 import com.example.demo.flink.domain.EnrichedOrder;
@@ -18,8 +19,6 @@ import org.apache.flink.api.common.eventtime.WatermarkStrategy;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.configuration.Configuration;
 import org.apache.flink.configuration.RestOptions;
-import org.apache.flink.connector.base.DeliveryGuarantee;
-import org.apache.flink.connector.kafka.sink.KafkaRecordSerializationSchema;
 import org.apache.flink.connector.kafka.sink.KafkaSink;
 import org.apache.flink.connector.kafka.source.KafkaSource;
 import org.apache.flink.connector.kafka.source.enumerator.initializer.OffsetsInitializer;
@@ -40,6 +39,11 @@ public class FlinkKafkaJob {
     private static final String GROUP_ID = "flink-demo-consumer";
     private static final String RULES_GROUP_ID = "flink-demo-rules-consumer";
     private static final String CHECKPOINT_DIR = "file:///tmp/practice-flink-checkpoints";
+
+    private static final String TX_PREFIX_ENRICHED = "flink-demo-enriched-";
+    private static final String TX_PREFIX_STATS = "flink-demo-stats-";
+    private static final String TX_PREFIX_WINDOWS = "flink-demo-windows-";
+    private static final String TX_PREFIX_DISCOUNTED = "flink-demo-discounted-";
 
     public static void main(String[] args) throws Exception {
         Configuration config = new Configuration();
@@ -64,45 +68,27 @@ public class FlinkKafkaJob {
 
         DataStream<EnrichedOrder> processed = applyProcessing(orders);
 
-        KafkaSink<EnrichedOrder> sink = KafkaSink.<EnrichedOrder>builder()
-                .setBootstrapServers(BOOTSTRAP_SERVERS)
-                .setRecordSerializer(
-                        KafkaRecordSerializationSchema.<EnrichedOrder>builder()
-                                .setTopic(OUTPUT_TOPIC)
-                                .setValueSerializationSchema(new JsonSerde<>(EnrichedOrder.class))
-                                .build())
-                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
-                .build();
+        KafkaSink<EnrichedOrder> sink = KafkaSinks.exactlyOnce(
+                BOOTSTRAP_SERVERS, OUTPUT_TOPIC, TX_PREFIX_ENRICHED,
+                new JsonSerde<>(EnrichedOrder.class));
 
         processed.sinkTo(sink).name("enriched-orders-sink");
         processed.print().name("debug-print");
 
         DataStream<UserOrderStats> stats = applyStatefulProcessing(orders);
 
-        KafkaSink<UserOrderStats> statsSink = KafkaSink.<UserOrderStats>builder()
-                .setBootstrapServers(BOOTSTRAP_SERVERS)
-                .setRecordSerializer(
-                        KafkaRecordSerializationSchema.<UserOrderStats>builder()
-                                .setTopic(STATS_TOPIC)
-                                .setValueSerializationSchema(new JsonSerde<>(UserOrderStats.class))
-                                .build())
-                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
-                .build();
+        KafkaSink<UserOrderStats> statsSink = KafkaSinks.exactlyOnce(
+                BOOTSTRAP_SERVERS, STATS_TOPIC, TX_PREFIX_STATS,
+                new JsonSerde<>(UserOrderStats.class));
 
         stats.sinkTo(statsSink).name("user-order-stats-sink");
         stats.print().name("debug-stats-print");
 
         DataStream<UserWindowStats> windowStats = applyWindowedProcessing(orders);
 
-        KafkaSink<UserWindowStats> windowSink = KafkaSink.<UserWindowStats>builder()
-                .setBootstrapServers(BOOTSTRAP_SERVERS)
-                .setRecordSerializer(
-                        KafkaRecordSerializationSchema.<UserWindowStats>builder()
-                                .setTopic(WINDOW_TOPIC)
-                                .setValueSerializationSchema(new JsonSerde<>(UserWindowStats.class))
-                                .build())
-                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
-                .build();
+        KafkaSink<UserWindowStats> windowSink = KafkaSinks.exactlyOnce(
+                BOOTSTRAP_SERVERS, WINDOW_TOPIC, TX_PREFIX_WINDOWS,
+                new JsonSerde<>(UserWindowStats.class));
 
         windowStats.sinkTo(windowSink).name("user-order-windows-sink");
         windowStats.print().name("debug-window-print");
@@ -123,15 +109,9 @@ public class FlinkKafkaJob {
 
         DataStream<DiscountedOrder> discounted = applyBroadcastProcessing(orders, rules);
 
-        KafkaSink<DiscountedOrder> discountedSink = KafkaSink.<DiscountedOrder>builder()
-                .setBootstrapServers(BOOTSTRAP_SERVERS)
-                .setRecordSerializer(
-                        KafkaRecordSerializationSchema.<DiscountedOrder>builder()
-                                .setTopic(DISCOUNTED_TOPIC)
-                                .setValueSerializationSchema(new JsonSerde<>(DiscountedOrder.class))
-                                .build())
-                .setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE)
-                .build();
+        KafkaSink<DiscountedOrder> discountedSink = KafkaSinks.exactlyOnce(
+                BOOTSTRAP_SERVERS, DISCOUNTED_TOPIC, TX_PREFIX_DISCOUNTED,
+                new JsonSerde<>(DiscountedOrder.class));
 
         discounted.sinkTo(discountedSink).name("discounted-orders-sink");
         discounted.print().name("debug-discounted-print");
