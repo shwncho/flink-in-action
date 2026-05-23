@@ -17,3 +17,4 @@ app:
     discounted-topic: discounted-orders
   flink:
     checkpoint-dir: file:///tmp/practice-flink-checkpoints
+    savepoint-dir: file:///tmp/practice-flink-savepoints

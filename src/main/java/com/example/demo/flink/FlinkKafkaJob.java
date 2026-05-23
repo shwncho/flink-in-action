@@ -39,6 +39,7 @@ public class FlinkKafkaJob {
     private static final String GROUP_ID = "flink-demo-consumer";
     private static final String RULES_GROUP_ID = "flink-demo-rules-consumer";
     private static final String CHECKPOINT_DIR = "file:///tmp/practice-flink-checkpoints";
+    private static final String SAVEPOINT_DIR = "file:///tmp/practice-flink-savepoints";
 
     private static final String TX_PREFIX_ENRICHED = "flink-demo-enriched-";
     private static final String TX_PREFIX_STATS = "flink-demo-stats-";
@@ -50,7 +51,7 @@ public class FlinkKafkaJob {
         config.set(RestOptions.PORT, 8081);
         StreamExecutionEnvironment env =
                 StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(config);
-        FlinkEnvironments.configureCheckpointing(env, CHECKPOINT_DIR);
+        FlinkEnvironments.configureCheckpointing(env, CHECKPOINT_DIR, SAVEPOINT_DIR);
 
         KafkaSource<Order> source = KafkaSource.<Order>builder()
                 .setBootstrapServers(BOOTSTRAP_SERVERS)

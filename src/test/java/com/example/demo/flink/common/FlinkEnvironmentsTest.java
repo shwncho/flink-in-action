@@ -12,7 +12,9 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
+import org.apache.flink.configuration.CheckpointingOptions;
 import org.apache.flink.configuration.ExternalizedCheckpointRetention;
+import org.apache.flink.configuration.ReadableConfig;
 import org.apache.flink.runtime.testutils.MiniClusterResourceConfiguration;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.CheckpointConfig;
@@ -35,7 +37,9 @@ class FlinkEnvironmentsTest {
     @Test
     void appliesCheckpointSettingsToEnvironment(@TempDir Path tempDir) {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
-        FlinkEnvironments.configureCheckpointing(env, asFileUri(tempDir));
+        String checkpointUri = asFileUri(tempDir.resolve("cp"));
+        String savepointUri = asFileUri(tempDir.resolve("sp"));
+        FlinkEnvironments.configureCheckpointing(env, checkpointUri, savepointUri);
 
         CheckpointConfig cc = env.getCheckpointConfig();
         assertThat(cc.getCheckpointInterval()).isEqualTo(FlinkEnvironments.CHECKPOINT_INTERVAL_MS);
@@ -46,13 +50,18 @@ class FlinkEnvironmentsTest {
                 .isEqualTo(FlinkEnvironments.MAX_CONCURRENT_CHECKPOINTS);
         assertThat(cc.getExternalizedCheckpointRetention())
                 .isEqualTo(ExternalizedCheckpointRetention.RETAIN_ON_CANCELLATION);
+
+        ReadableConfig configuration = env.getConfiguration();
+        assertThat(configuration.get(CheckpointingOptions.SAVEPOINT_DIRECTORY))
+                .isEqualTo(savepointUri);
     }
 
     @Test
     void statefulPipelineRunsWithRocksDbAndCheckpointing(@TempDir Path tempDir) throws Exception {
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
         env.setParallelism(1);
-        FlinkEnvironments.configureCheckpointing(env, asFileUri(tempDir));
+        FlinkEnvironments.configureCheckpointing(
+                env, asFileUri(tempDir.resolve("cp")), asFileUri(tempDir.resolve("sp")));
 
         Order o1 = new Order("o1", "u1", "p1", new BigDecimal("10.00"),
                 Instant.parse("2026-01-01T00:00:00Z"));

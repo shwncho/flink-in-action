@@ -20,12 +20,14 @@ public final class FlinkEnvironments {
 
     private FlinkEnvironments() {}
 
-    public static void configureCheckpointing(StreamExecutionEnvironment env, String checkpointDir) {
+    public static void configureCheckpointing(
+            StreamExecutionEnvironment env, String checkpointDir, String savepointDir) {
         Configuration config = new Configuration();
         config.set(StateBackendOptions.STATE_BACKEND, "rocksdb");
         config.set(CheckpointingOptions.INCREMENTAL_CHECKPOINTS, true);
         config.set(CheckpointingOptions.CHECKPOINT_STORAGE, "filesystem");
         config.set(CheckpointingOptions.CHECKPOINTS_DIRECTORY, checkpointDir);
+        config.set(CheckpointingOptions.SAVEPOINT_DIRECTORY, savepointDir);
         config.set(RestartStrategyOptions.RESTART_STRATEGY, "fixed-delay");
         config.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_ATTEMPTS, RESTART_ATTEMPTS);
         config.set(RestartStrategyOptions.RESTART_STRATEGY_FIXED_DELAY_DELAY, RESTART_DELAY);
